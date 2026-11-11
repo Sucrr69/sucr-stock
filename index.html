@@ -1,0 +1,120 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#e0457b">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sucr Stock">
+  <title>Sucr Stock</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icones/icone-192.png">
+  <link rel="apple-touch-icon" href="icones/icone-180.png">
+  <link rel="stylesheet" href="style.css?v=202611111855">
+</head>
+<body>
+  <nav class="nav" aria-label="Navigation principale">
+    <div class="nav-marque">Sucr<span>Stock</span></div>
+    <button class="nav-lien" data-vue="ajout"><span class="ico">＋</span><span>Ajouter</span></button>
+    <button class="nav-lien" data-vue="stock"><span class="ico">▦</span><span>Stock</span></button>
+    <button class="nav-lien" data-vue="tableau"><span class="ico">◔</span><span>Tableau de bord</span></button>
+    <button class="nav-lien" data-vue="mapping"><span class="ico">⇄</span><span>Colonnes</span></button>
+    <button class="nav-lien" data-vue="reglages"><span class="ico">⚙</span><span>Réglages</span></button>
+    <div class="nav-etat" id="etat-synchro" title="État de la synchronisation">—</div>
+  </nav>
+
+  <main>
+    <!-- AJOUT RAPIDE -->
+    <section class="vue" id="vue-ajout" hidden>
+      <header class="entete"><h1 id="titre-ajout">Ajout rapide</h1></header>
+      <div id="contenu-ajout"></div>
+    </section>
+
+    <!-- STOCK -->
+    <section class="vue" id="vue-stock" hidden>
+      <header class="entete">
+        <h1>Stock</h1>
+        <button class="btn" id="btn-rafraichir">Actualiser</button>
+      </header>
+      <div class="resume" id="resume-stock"></div>
+      <div class="filtres">
+        <input type="search" id="f-recherche" placeholder="Rechercher un article…" autocomplete="off">
+        <select id="f-statut" aria-label="Statut"></select>
+        <select id="f-categorie" aria-label="Catégorie"></select>
+        <select id="f-tri" aria-label="Tri">
+          <option value="num-desc">Plus récents d'abord</option>
+          <option value="num-asc">Plus anciens d'abord</option>
+          <option value="achat-desc">Prix d'achat ↓</option>
+          <option value="demande-desc">Prix demandé ↓</option>
+          <option value="anciennete-desc">Ancienneté ↓</option>
+        </select>
+      </div>
+      <p class="compteur" id="compteur-stock"></p>
+      <div class="liste" id="liste-stock"></div>
+      <button class="btn btn-large" id="btn-plus" hidden>Afficher plus</button>
+    </section>
+
+    <!-- TABLEAU DE BORD -->
+    <section class="vue" id="vue-tableau" hidden>
+      <header class="entete">
+        <h1>Tableau de bord</h1>
+        <div class="rangee selecteurs">
+          <select id="t-annee" aria-label="Année"></select>
+          <select id="t-mois" aria-label="Mois"></select>
+        </div>
+      </header>
+      <div id="contenu-tableau"></div>
+    </section>
+
+    <!-- MAPPING -->
+    <section class="vue" id="vue-mapping" hidden>
+      <header class="entete"><h1>Colonnes du Sheet</h1></header>
+      <p class="aide">Voici comment l'appli comprend ton onglet <b>Stock</b>. Vérifie que chaque colonne est bien reconnue : c'est ce mapping qui servira plus tard pour écrire.</p>
+      <div id="contenu-mapping"></div>
+    </section>
+
+    <!-- RÉGLAGES -->
+    <section class="vue" id="vue-reglages" hidden>
+      <header class="entete"><h1>Réglages</h1></header>
+      <div class="carte">
+        <h2>Connexion au Google Sheet</h2>
+        <label>URL de l'API Apps Script
+          <input type="url" id="r-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Jeton secret
+          <input type="password" id="r-jeton" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="rangee">
+          <button class="btn btn-accent" id="btn-enregistrer">Enregistrer et tester</button>
+          <button class="btn" id="btn-synchro">Forcer la synchro</button>
+        </div>
+        <p class="message" id="r-message" role="status"></p>
+        <p class="aide">L'URL et le jeton restent uniquement dans ce navigateur. Ils ne sont pas dans le code de l'appli.</p>
+      </div>
+      <div class="carte" id="carte-file" hidden></div>
+      <div class="carte">
+        <h2>Cet appareil</h2>
+        <button class="btn btn-accent" id="btn-installer" hidden>Installer l'appli sur cet appareil</button>
+        <p class="aide" id="r-cache"></p>
+        <button class="btn btn-danger" id="btn-oublier">Effacer les données de cet appareil</button>
+        <p class="aide">Efface l'URL, le jeton et la copie locale. Ton Google Sheet n'est pas touché.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="fiche">
+    <div class="fiche-contenu" id="fiche-contenu"></div>
+    <form method="dialog"><button class="btn btn-large">Fermer</button></form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="calculs.js?v=202611111855"></script>
+  <script src="tableau.js?v=202611111855"></script>
+  <script src="saisie.js?v=202611111855"></script>
+  <script src="horsligne.js?v=202611111855"></script>
+  <script src="app.js?v=202611111855"></script>
+</body>
+</html>
