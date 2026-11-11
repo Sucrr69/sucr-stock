@@ -2,9 +2,9 @@
  * Stratégie « réseau d'abord » : avec du réseau, on charge toujours la dernière version ;
  * sans réseau, on ressort la dernière version gardée sur l'appareil.
  * Les échanges avec Google (données) ne passent jamais par ce cache. */
-const CACHE = 'sucr-stock-202611111855';
+const CACHE = 'sucr-stock-202611111921';
 const FICHIERS = ['./', 'index.html', 'style.css', 'calculs.js', 'tableau.js', 'saisie.js', 'horsligne.js', 'app.js',
-  'manifest.webmanifest', 'icones/icone-192.png', 'icones/icone-512.png', 'icones/icone-180.png'];
+  'manifest.webmanifest', 'icone-192.png', 'icone-512.png', 'icone-180.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FICHIERS)).then(() => self.skipWaiting()));
