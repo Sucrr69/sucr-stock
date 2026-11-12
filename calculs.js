@@ -1,4 +1,4 @@
-/* Sucr Stock — calculs métier.
+/* Sucr_tcg — calculs métier.
  * Tout est recalculé à partir des colonnes SAISIES (bleues), avec les mêmes règles
  * que les formules du tableur. Les colonnes grises du Sheet ne servent qu'à comparer. */
 'use strict';

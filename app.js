@@ -1,4 +1,4 @@
-/* Sucr Stock — Jalon 1 : lecture du Google Sheet (aucune écriture). */
+/* Sucr_tcg — Jalon 1 : lecture du Google Sheet (aucune écriture). */
 'use strict';
 
 /* ------------------------------------------------------------------ */
@@ -33,9 +33,11 @@ const CHAMPS = {
   netAttendu: 'Net attendu (€)',
   margeAttendue: 'Marge attendue (€)',
   anciennete: 'Ancienneté (mois)',
-  note: 'Note' // colonne à créer au jalon 3
+  note: 'Note',
+  idTcgdex: 'ID TCGdex',   // colonnes des images (étape 7)
+  image: 'Image'
 };
-const CHAMPS_OPTIONNELS = ['note'];
+const CHAMPS_OPTIONNELS = ['note', 'idTcgdex', 'image'];
 const CHAMPS_EUROS = ['prixAchat', 'prixVenteBrut', 'commission', 'prixVenteNet', 'benefice',
   'prixAchatInitial', 'prixDemande', 'netAttendu', 'margeAttendue'];
 
@@ -169,6 +171,8 @@ function chargerDonnees(donnees) {
   afficherMapping();
   afficherCache();
   afficherAjout();
+  afficherVerifier();
+  afficherCarteImages();
 }
 
 function seuilsMois() {
@@ -232,7 +236,7 @@ function afficherStock() {
   }
   const enVente = etat.articles.filter((a) => a.statut === 'En stock' || a.statut === 'Listé');
   const somme = (l, champ) => l.reduce((t, a) => t + (typeof a[champ] === 'number' ? a[champ] : 0), 0);
-  const aVerifier = etat.articles.filter((a) => String(a.controle).trim() !== '').length;
+  const aVerifier = articlesAVerifier().length;
   $('resume-stock').innerHTML = [
     [fmtNombre.format(enVente.filter((a) => a.statut === 'En stock').length), 'En stock'],
     [fmtNombre.format(enVente.filter((a) => a.statut === 'Listé').length), 'Listés'],
@@ -252,7 +256,8 @@ function afficherStock() {
     }
     const cEtat = couleur(a.etat, COULEURS_ETAT);
     const cCat = couleur(a.categorie, COULEURS_CATEGORIE);
-    return `<button class="article" data-ligne="${a._ligne}">
+    return `<button class="article avec-vignette" data-ligne="${a._ligne}">
+      ${vignette(a)}
       <span class="a-nom"><small>${a.numero === '' ? 'Nouveau' : 'N° ' + esc(a.numero)}</small>${esc(a.article)}</span>
       <span class="a-prix">${esc(euros(a.prixAchat))}<small>${typeof a.prixDemande === 'number' ? 'demandé ' + esc(euros(a.prixDemande)) : ''}</small></span>
       <span class="a-infos">
@@ -276,7 +281,7 @@ function ouvrirFiche(ligne) {
   const titresEuros = CHAMPS_EUROS.map((c) => CHAMPS[c]);
   const lignes = colonnes.map((col, i) => {
     let v = a._brut[i];
-    if (v === '' || v == null) return '';
+    if (v === '' || v == null || col.titre === CHAMPS.image) return '';
     if (typeof v === 'number') {
       if (titresEuros.includes(col.titre)) v = euros(v);
       else if (col.titre === CHAMPS.marge) v = fmtPourcent.format(v);
@@ -286,6 +291,7 @@ function ouvrirFiche(ligne) {
   }).join('');
   $('fiche-contenu').innerHTML =
     `<h2>${esc(a.article)}</h2><p class="aide">${a._ligne > 0 ? `Ligne ${a._ligne} de l'onglet Stock` : 'Pas encore dans le tableur'}</p>
+     ${imageValide(a.image) ? `<img class="fiche-image" src="${esc(a.image)}/high.webp" alt="" crossorigin="anonymous">` : ''}
      ${boutonsFiche(a)}<table>${lignes}</table>`;
   $('fiche').showModal();
 }
@@ -406,12 +412,42 @@ async function lancerSynchro(texteOk) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Thème clair / sombre / automatique                                   */
+/* ------------------------------------------------------------------ */
+const CLE_THEME = 'sucr-stock.theme';
+
+function themeChoisi() {
+  try {
+    const t = localStorage.getItem(CLE_THEME);
+    return t === 'clair' || t === 'sombre' ? t : 'auto';
+  } catch (e) { return 'auto'; }
+}
+
+function appliquerTheme(theme) {
+  if (theme === 'clair' || theme === 'sombre') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;   // automatique : suit le système
+  try {
+    if (theme === 'auto') localStorage.removeItem(CLE_THEME);
+    else localStorage.setItem(CLE_THEME, theme);
+  } catch (e) { /* stockage indisponible : le choix vaut pour cette ouverture seulement */ }
+}
+
+function brancherTheme() {
+  const actuel = themeChoisi();
+  document.querySelectorAll('#r-theme input').forEach((radio) => {
+    radio.checked = radio.value === actuel;
+    radio.addEventListener('change', () => { if (radio.checked) appliquerTheme(radio.value); });
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Navigation et démarrage                                              */
 /* ------------------------------------------------------------------ */
 function montrer(vue) {
   if (!$('vue-' + vue)) vue = 'ajout';
   document.querySelectorAll('.vue').forEach((s) => { s.hidden = s.id !== 'vue-' + vue; });
   document.querySelectorAll('.nav-lien').forEach((b) => b.classList.toggle('actif', b.dataset.vue === vue));
+  document.body.dataset.vue = vue;   // sert au style propre à chaque écran
   if (location.hash !== '#' + vue) history.replaceState(null, '', '#' + vue);
 }
 
@@ -420,10 +456,41 @@ function demarrer() {
   ['f-recherche', 'f-statut', 'f-categorie', 'f-tri'].forEach((id) =>
     $(id).addEventListener('input', () => { etat.affiches = PAR_PAGE; afficherStock(); }));
   $('btn-plus').addEventListener('click', () => { etat.affiches += PAR_PAGE; afficherStock(); });
+  // Clic : ouvre la fiche. Appui long (mobile) ou clic droit (PC) : menu d'actions, dont Supprimer.
+  let appui = null, appuiLongFait = false;
+  const articleDe = (e) => {
+    const b = e.target.closest('.article');
+    return b ? etat.articles.find((x) => x._ligne === Number(b.dataset.ligne)) : null;
+  };
+  const annulerAppui = () => { clearTimeout(appui); appui = null; };
   $('liste-stock').addEventListener('click', (e) => {
+    if (appuiLongFait) { appuiLongFait = false; return; }
     const b = e.target.closest('.article');
     if (b) ouvrirFiche(Number(b.dataset.ligne));
   });
+  $('liste-stock').addEventListener('pointerdown', (e) => {
+    const a = articleDe(e);
+    appuiLongFait = false;
+    annulerAppui();
+    if (!a || e.pointerType === 'mouse') return;
+    const x = e.clientX, y = e.clientY;
+    appui = setTimeout(() => { appuiLongFait = true; if (navigator.vibrate) navigator.vibrate(15); menuArticle(a); }, 550);
+    const bouge = (ev) => { if (Math.hypot(ev.clientX - x, ev.clientY - y) > 10) annulerAppui(); };
+    e.target.addEventListener('pointermove', bouge, { passive: true });
+    setTimeout(() => e.target.removeEventListener('pointermove', bouge), 700);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave', 'scroll'].forEach((type) =>
+    $('liste-stock').addEventListener(type, annulerAppui, { passive: true }));
+  $('liste-stock').addEventListener('contextmenu', (e) => {
+    const a = articleDe(e);
+    if (!a) return;
+    e.preventDefault();
+    appuiLongFait = false;
+    menuArticle(a);
+  });
+  brancherTheme();
+  brancherVerifier();
+  brancherCartes();
   brancherSaisie();
   brancherFile();
   afficherFile();
@@ -466,7 +533,7 @@ function demarrer() {
   if (cache && cache.stock) {
     try { chargerDonnees(cache); } catch (e) { etat.donnees = null; }
   }
-  if (!etat.donnees) { afficherStock(); afficherTableau(); afficherMapping(); afficherCache(); afficherAjout(); }
+  if (!etat.donnees) { afficherStock(); afficherTableau(); afficherMapping(); afficherCache(); afficherAjout(); afficherVerifier(); afficherCarteImages(); }
 
   const connecte = r.url && r.jeton;
   montrer(connecte ? (location.hash.slice(1) || 'ajout') : 'reglages');

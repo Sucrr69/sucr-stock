@@ -1,4 +1,4 @@
-﻿/* Sucr Stock — Jalon 3 : saisie (achat, lot, vente, mise en vente, modification). */
+/* Sucr_tcg — Jalon 3 : saisie (achat, lot, vente, mise en vente, modification). */
 'use strict';
 
 const CLE_MEMO = 'sucr-stock.memo';
@@ -33,14 +33,22 @@ function options(liste, choisi, libelleVide) {
   return (libelleVide != null ? `<option value="">${esc(libelleVide)}</option>` : '') +
     liste.map((v) => `<option${v === choisi ? ' selected' : ''}>${esc(v)}</option>`).join('');
 }
-function toast(texte, erreur) {
+function toast(texte, erreur, action) {
   const t = $('toast');
-  if (saisie.messageForce) { texte = saisie.messageForce; erreur = false; saisie.messageForce = null; }
+  if (saisie.messageForce) { texte = saisie.messageForce; erreur = false; action = null; saisie.messageForce = null; }
   t.textContent = texte;
+  if (action) {
+    const bouton = document.createElement('button');
+    bouton.type = 'button';
+    bouton.className = 'toast-action';
+    bouton.textContent = action.libelle;
+    bouton.addEventListener('click', () => { t.hidden = true; action.fn(); });
+    t.appendChild(bouton);
+  }
   t.className = 'toast' + (erreur ? ' erreur' : '');
   t.hidden = false;
   clearTimeout(toast.minuteur);
-  toast.minuteur = setTimeout(() => { t.hidden = true; }, erreur ? 7000 : 3500);
+  toast.minuteur = setTimeout(() => { t.hidden = true; }, action ? 9000 : erreur ? 7000 : 3500);
 }
 
 /** Envoie une écriture. Le même identifiant est réutilisé en cas de nouvel essai : pas de doublon. */
@@ -152,6 +160,7 @@ function afficherAchat(zone) {
       <label>Nom de l'article <small>avec l'extension et le numéro, ex. « Miraidon ex (SVI 244) »</small>
         <input id="a-nom" list="a-noms" maxlength="200" enterkeyhint="next"></label>
       <datalist id="a-noms">${noms.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+      <div id="a-suggestions"></div>
       <div class="deux">
         <label>Catégorie<select id="a-categorie">${options(listeParam('Catégories'), m.categorie || 'Pokémon')}</select></label>
         <label>Origine<select id="a-origine">${options(listeParam('Origines'), 'Achat')}</select></label>
@@ -215,6 +224,11 @@ function lireAchat() {
     listeSur, prixDemande: horsVente || prixDemande === null ? '' : prixDemande
   };
   if (aColonneNote()) a.note = $('a-note').value.trim();
+  // Carte officielle choisie dans les propositions : on enregistre son identifiant et son image.
+  if (saisie.tcg && colonnesImagesPresentes() && article.startsWith(saisie.tcg.nomChoisi)) {
+    a.idTcgdex = saisie.tcg.idTcgdex;
+    a.image = saisie.tcg.image;
+  }
   retenir({ categorie: a.categorie, etat: etatCarte });
   return a;
 }
@@ -267,6 +281,8 @@ async function validerAchat(bouton) {
 
 function viderAchat() {
   ['a-nom', 'a-prix', 'a-demande', 'a-note', 'a-liste'].forEach((id) => { if ($(id)) $(id).value = ''; });
+  saisie.tcg = null;
+  if ($('a-suggestions')) $('a-suggestions').innerHTML = '';
   $('a-nom').focus();
 }
 
@@ -575,6 +591,7 @@ function boutonsFiche(a) {
     ${enVente ? '<button type="button" class="btn btn-accent" data-fiche="vendre">Marquer vendu</button>' : ''}
     ${enVente ? `<button type="button" class="btn" data-fiche="lister">${a.statut === 'Listé' ? 'Changer la mise en vente' : 'Marquer listé'}</button>` : ''}
     <button type="button" class="btn" data-fiche="modifier">Modifier</button>
+    ${versionApi() >= 5 ? '<button type="button" class="btn btn-danger" data-fiche="supprimer">Supprimer</button>' : ''}
   </div>`;
 }
 
@@ -605,6 +622,15 @@ function ficheModifier(a) {
         <label>Listé sur<select id="m-listeSur">${options(listeParam('Listé sur'), a.listeSur, 'Aucun')}</select></label>
         <label>Prix demandé (€)<input id="m-prixDemande" inputmode="decimal" value="${prix(a.prixDemande)}"></label>
       </div>
+      ${a.statut === 'Vendu' ? `<div class="deux">
+        <label>Prix de vente brut (€)<input id="m-prixVenteBrut" inputmode="decimal" value="${prix(a.prixVenteBrut)}"></label>
+        <label>Vendu sur<select id="m-venduSur">${options(plateformesVente(), a.venduSur, '—')}</select></label>
+      </div>
+      <div class="deux">
+        <label>Mois de vente<select id="m-moisVente">${options(listeMois(), a.moisVente, '—')}</select></label>
+        <label>Année de vente<input id="m-anneeVente" inputmode="numeric" maxlength="4" value="${esc(a.anneeVente)}"></label>
+      </div>` : ''}
+      ${a.statut ? '' : `<label>Statut<select id="m-statut">${options(['En stock', 'Listé', 'Hors vente'], '', 'À choisir')}</select></label>`}
       ${aColonneNote() ? `<label>Note<input id="m-note" maxlength="300" value="${esc(a.note)}"></label>` : ''}
       <p class="aide">Le statut se change avec « Marquer vendu » ou « Marquer listé ».</p>
       <p class="message erreur" id="m-erreur"></p>
@@ -622,6 +648,9 @@ async function actionFiche(action, a, bouton) {
     afficherAjout();
     return;
   }
+  if (action === 'supprimer') return ficheSupprimer(a);
+  if (action === 'annuler-suppression') return ouvrirFiche(a._ligne);
+  if (action === 'valider-supprimer') return supprimerArticle(a, bouton);
   if (action === 'lister') { saisie.idEnCours = null; return ficheLister(a); }
   if (action === 'modifier') { saisie.idEnCours = null; return ficheModifier(a); }
 
@@ -635,7 +664,17 @@ async function actionFiche(action, a, bouton) {
     const erreur = (t) => { $('m-erreur').textContent = t; };
     const lus = { article: $('m-article').value.trim(), categorie: $('m-categorie').value, etat: $('m-etat').value,
       origine: $('m-origine').value, listeSur: $('m-listeSur').value };
-    for (const cle of ['prixAchat', 'prixDemande']) {
+    const champsPrix = ['prixAchat', 'prixDemande'];
+    if ($('m-prixVenteBrut')) {
+      champsPrix.push('prixVenteBrut');
+      lus.venduSur = $('m-venduSur').value;
+      lus.moisVente = $('m-moisVente').value;
+      const annee = $('m-anneeVente').value.trim();
+      if (annee !== '' && !/^20\d\d$/.test(annee)) return erreur('Année de vente invalide.');
+      lus.anneeVente = annee === '' ? '' : Number(annee);
+    }
+    if ($('m-statut') && $('m-statut').value) lus.statut = $('m-statut').value;
+    for (const cle of champsPrix) {
       const p = lirePrix($('m-' + cle).value);
       if (p !== null && isNaN(p)) return erreur('Prix invalide.');
       lus[cle] = p === null ? '' : p;
@@ -653,9 +692,102 @@ async function actionFiche(action, a, bouton) {
     `Modification : ${a.article}`);
   if (!reponse) return;
   Object.assign(a, champs);
+  if (!reponse.enAttente && reponse.resultats[0]) a.controle = reponse.resultats[0].controle || '';
   $('fiche').close();
   toast('Modification enregistrée.' + resumeControle(reponse));
   afficherStock();
+  afficherVerifier();
+}
+
+/* ------------------------------------------------------------------ */
+/* Suppression d'un article (vers l'onglet « Corbeille » du tableur)    */
+/* ------------------------------------------------------------------ */
+function estDansUnEchange(a) {
+  if (a.refEchange !== '' && a.refEchange != null) return true;
+  if (a.statut === 'Échangé') return true;
+  const e = etat.donnees.echanges || {};
+  const col = (e.colonnes || []).indexOf('N° Stock');
+  return col >= 0 && (e.valeurs || []).some((l) => l[col] === a.numero);
+}
+
+function peutSupprimer(a) {
+  return peutEcrire() && versionApi() >= 5 && !a._attente && a._ligne > 0;
+}
+
+/** Fenêtre de confirmation : nom, prix et date de l'article, et alerte s'il fait partie d'un échange. */
+function ficheSupprimer(a) {
+  const echange = estDansUnEchange(a);
+  $('fiche-contenu').innerHTML = `<h2>Supprimer cet article ?</h2>
+    <div class="formulaire" data-ligne="${a._ligne}">
+      <table>
+        <tr><td>Article</td><td><b>${esc(a.article)}</b></td></tr>
+        <tr><td>N°</td><td>${esc(a.numero)}</td></tr>
+        <tr><td>Prix d'achat</td><td>${esc(euros(a.prixAchat))}</td></tr>
+        <tr><td>Date d'achat</td><td>${esc(a.moisAchat)} ${esc(a.anneeAchat)}</td></tr>
+        <tr><td>Statut</td><td>${esc(a.statut || 'Sans statut')}${a.statut === 'Vendu' ? ' · ' + esc(euros(a.prixVenteBrut)) : ''}</td></tr>
+      </table>
+      ${echange ? `<p class="bandeau alerte"><b>Attention : cet article fait partie d'un échange${a.refEchange !== '' ? ' (réf. ' + esc(a.refEchange) + ')' : ''}.</b><br>
+        Le supprimer affichera « N° introuvable » dans l'onglet Échanges et faussera le coût reporté de cet échange.</p>
+        <label class="case"><input type="checkbox" id="s-echange"> Je supprime quand même cet article</label>` : ''}
+      ${a.statut === 'Vendu' ? '<p class="bandeau alerte">Cet article est vendu : le supprimer retire sa vente de ton chiffre d\'affaires et de ton bénéfice.</p>' : ''}
+      <p class="aide">L'article est d'abord recopié dans l'onglet « Corbeille » du tableur, puis retiré du Stock. Tu peux annuler juste après.</p>
+      <p class="message erreur" id="s-erreur"></p>
+      <div class="rangee">
+        <button type="button" class="btn grand" data-fiche="annuler-suppression">Garder l'article</button>
+        <button type="button" class="btn grand btn-supprimer" data-fiche="valider-supprimer">Supprimer</button>
+      </div>
+    </div>`;
+  if (!$('fiche').open) $('fiche').showModal();
+}
+
+async function supprimerArticle(a, bouton) {
+  const erreur = (t) => { $('s-erreur').textContent = t; };
+  erreur('');
+  if (!navigator.onLine) return erreur('Pas de connexion : la suppression se fait uniquement avec du réseau.');
+  const echange = estDansUnEchange(a);
+  if (echange && !$('s-echange').checked) return erreur('Coche la case pour confirmer la suppression d\'un article échangé.');
+  bouton.disabled = true;
+  afficherSynchro('attente', 'Suppression…');
+  try {
+    // Envoi direct : une suppression n'est jamais mise en file d'attente.
+    await api('deleteRow', { idRequete: crypto.randomUUID(), numero: a.numero, articleAttendu: a.article, confirmeEchange: echange });
+  } catch (e) {
+    afficherSynchro('erreur', 'Non supprimé');
+    bouton.disabled = false;
+    return erreur(e.message);
+  }
+  const position = etat.articles.indexOf(a);
+  if (position >= 0) etat.articles.splice(position, 1);
+  $('fiche').close();
+  afficherStock(); afficherVerifier(); afficherTableau();
+  afficherSynchro('ok', 'Supprimé');
+  toast(`Supprimé : ${a.article}`, false, { libelle: 'Annuler', fn: () => restaurerArticle(a, position) });
+  synchroniser().catch(() => {});
+}
+
+async function restaurerArticle(a, position) {
+  afficherSynchro('attente', 'Restauration…');
+  try {
+    await api('restoreRow', { idRequete: crypto.randomUUID(), numero: a.numero });
+  } catch (e) {
+    afficherSynchro('erreur', 'Non restauré');
+    return toast('Restauration impossible : ' + e.message + ' L\'article reste dans l\'onglet Corbeille du tableur.', true);
+  }
+  if (!etat.articles.includes(a)) etat.articles.splice(position >= 0 ? position : etat.articles.length, 0, a);
+  afficherStock(); afficherVerifier(); afficherTableau();
+  afficherSynchro('ok', 'Restauré');
+  toast(`Restauré : ${a.article}`);
+  synchroniser().catch(() => {});
+}
+
+/** Menu d'actions d'une ligne du Stock (appui long sur mobile, clic droit sur PC). */
+function menuArticle(a) {
+  $('fiche-contenu').innerHTML = `<h2>${esc(a.article)}</h2><p class="aide">${a.numero === '' ? 'Nouveau' : 'N° ' + esc(a.numero)} · ${esc(a.statut || 'Sans statut')}</p>
+    <div class="menu-actions" data-ligne="${a._ligne}">
+      <button type="button" class="btn grand" data-fiche="annuler-suppression">Ouvrir la fiche</button>
+      ${peutSupprimer(a) ? '<button type="button" class="btn grand btn-danger" data-fiche="supprimer">Supprimer…</button>' : ''}
+    </div>`;
+  if (!$('fiche').open) $('fiche').showModal();
 }
 
 /* ------------------------------------------------------------------ */

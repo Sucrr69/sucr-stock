@@ -1,4 +1,4 @@
-/* Sucr Stock — Jalon 5 : file d'attente des saisies faites sans réseau.
+/* Sucr_tcg — Jalon 5 : file d'attente des saisies faites sans réseau.
  * Une saisie qui n'a pas pu partir est gardée sur l'appareil, affichée tout de suite dans l'appli,
  * puis envoyée dès que le réseau revient. Son identifiant ne change pas : jamais de doublon. */
 'use strict';
