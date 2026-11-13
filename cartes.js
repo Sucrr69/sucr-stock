@@ -90,13 +90,19 @@ function iconeCategorie(categorie) {
   if (categorie === 'Autre' || !categorie) return ICONES_CATEGORIE.autre;
   return ICONES_CATEGORIE.carte;
 }
+const estPhotoPerso = (url) => typeof url === 'string' && url.startsWith('data:image/');
 function imageValide(url) {
-  return typeof url === 'string' && url.startsWith(HOTE_IMAGES);
+  return typeof url === 'string' && (url.startsWith(HOTE_IMAGES) || estPhotoPerso(url));
+}
+/** Attributs src (+ crossorigin pour TCGdex) d'une image d'article. Une photo personnelle est déjà dans la donnée. */
+function attributsImage(url, grande) {
+  if (estPhotoPerso(url)) return `src="${esc(url)}"`;
+  return `src="${esc(url)}/${grande ? 'high' : 'low'}.webp" crossorigin="anonymous"`;
 }
 /** Image de la carte si elle est connue, sinon une icône propre à la catégorie. */
 function vignette(a) {
   if (imageValide(a.image)) {
-    return `<img class="vignette" src="${esc(a.image)}/low.webp" alt="" loading="lazy" decoding="async" crossorigin="anonymous" width="44" height="61">`;
+    return `<img class="vignette" ${attributsImage(a.image, false)} alt="" loading="lazy" decoding="async" width="44" height="61">`;
   }
   return `<span class="vignette sans-image" style="--c:${esc(couleur(a.categorie, COULEURS_CATEGORIE) || 'var(--bord)')}">
     <svg viewBox="0 0 24 24" aria-hidden="true">${iconeCategorie(a.categorie)}</svg></span>`;
@@ -302,7 +308,186 @@ async function enregistrerAssociations(bouton) {
   synchroniser().catch(() => {});
 }
 
+/* ------------------------------------------------------------------ */
+/* Fiche article : ajouter, changer ou retirer l'image à la main        */
+/* ------------------------------------------------------------------ */
+function peutChoisirImage(a) {
+  // Toutes les catégories : une photo personnelle convient aussi à un scellé ou à un accessoire.
+  return peutEcrire() && versionApi() >= 6 && colonnesImagesPresentes() && !a._attente && a._ligne > 0;
+}
+function boutonImage(a) {
+  if (!peutChoisirImage(a)) return '';
+  return `<button type="button" class="btn" data-fiche="image">${imageValide(a.image) ? "Changer l'image" : 'Ajouter une image'}</button>`;
+}
+
+/** Sépare ce qui est tapé en un nom et, s'il y en a un, un numéro de carte. */
+function analyserRecherche(texte) {
+  const numero = (String(texte).match(/\b(\d{1,3}[a-z]?)\b(?!.*\d)/i) || [])[1] || '';
+  const nom = String(texte).replace(/\([^)]*\)?/g, ' ').replace(/\b\d+[a-z]?\b/gi, ' ').trim();
+  return { nom, numero };
+}
+
+function ficheImage(a) {
+  const { nom, numero } = decouperArticle(a.article);
+  saisie.idEnCours = null;
+  $('fiche-contenu').innerHTML = `<h2>${imageValide(a.image) ? "Changer l'image" : 'Ajouter une image'}</h2>
+    <p class="aide">${esc(a.article)}</p>
+    <div class="formulaire" data-ligne="${a._ligne}">
+      ${sourcePour(a.categorie) ? `<label>Chercher la carte <small>nom, et numéro si tu le connais</small>
+        <input type="search" id="i-recherche" autocomplete="off" value="${esc((nom + ' ' + numero).trim())}"></label>
+      <p class="aide" id="i-etat"></p>
+      <div class="suggestions" id="i-resultats"></div>` : ''}
+      ${versionApi() >= 7 ? `<div class="depot" id="i-depot">
+        <b>${sourcePour(a.categorie) ? 'Ou utilise ta propre photo' : 'Utilise ta propre photo'}</b>
+        <span>Glisse une image ici, ou</span>
+        <label class="btn">Choisir un fichier<input type="file" id="i-fichier" accept="image/*" hidden></label>
+        <small>La photo est réduite puis enregistrée dans ton tableur. Elle n'est envoyée nulle part ailleurs.</small>
+      </div>
+      <div id="i-apercu"></div>` : '<p class="aide">Pour utiliser ta propre photo, mets à jour le script du tableur (voir GUIDE-PHOTOS.md).</p>'}
+      <p class="message erreur" id="i-erreur"></p>
+      <div class="rangee">
+        <button type="button" class="btn" data-fiche="annuler-suppression">Retour à la fiche</button>
+        ${imageValide(a.image) ? '<button type="button" class="btn btn-danger" data-fiche="retirer-image">Retirer l\'image</button>' : ''}
+      </div>
+    </div>`;
+  if ($('i-recherche')) { chercherImage(); $('i-recherche').focus(); }
+}
+
+let minuteurImage = null;
+function chercherImage() {
+  clearTimeout(minuteurImage);
+  const champ = $('i-recherche');
+  if (!champ) return;
+  const texte = champ.value.trim();
+  const etatRecherche = $('i-etat'), zone = $('i-resultats');
+  const a = etat.articles.find((x) => x._ligne === Number(champ.closest('[data-ligne]').dataset.ligne));
+  const source = a && sourcePour(a.categorie);
+  if (!source || texte.length < 3) { zone.innerHTML = ''; etatRecherche.textContent = 'Tape au moins 3 lettres.'; return; }
+  etatRecherche.textContent = 'Recherche…';
+  minuteurImage = setTimeout(async () => {
+    const { nom, numero } = analyserRecherche(texte);
+    let cartes;
+    try { cartes = await source.chercher(nom, numero); }
+    catch (e) { zone.innerHTML = ''; etatRecherche.textContent = 'Recherche impossible : ' + e.message; return; }
+    if (!$('i-recherche') || $('i-recherche').value.trim() !== texte) return;   // on a retapé entre-temps
+    const sansImage = cartes.filter((c) => !c.image).length;
+    cartes = cartes.filter((c) => c.image);
+    const tape = normaliser(nom);
+    const note = (x) => (normaliser(x.nom) === tape ? 2 : normaliser(x.nom).includes(tape) ? 1 : 0);
+    cartes.sort((x, y) => note(y) - note(x));
+    saisie.choixImages = cartes.slice(0, 30);
+    etatRecherche.textContent = cartes.length
+      ? `${cartes.length} carte(s) trouvée(s)${cartes.length > 30 ? ', les 30 premières sont affichées : ajoute le numéro pour affiner' : ''}. Touche la bonne.`
+      : (sansImage ? `${sansImage} carte(s) trouvée(s), mais sans image chez TCGdex.` : 'Aucune carte trouvée. Essaie un autre nom, ou seulement une partie du nom.');
+    zone.innerHTML = saisie.choixImages.map((c, i) => `<button type="button" class="suggestion" data-image-choix="${i}">
+      <img src="${esc(c.image)}/low.webp" alt="" crossorigin="anonymous" width="66" height="92">
+      <span><b>${esc(c.nom)}</b><small>${esc(idSetDe(c.id).toUpperCase())} · n° ${esc(c.numero)}</small></span>
+    </button>`).join('');
+  }, 350);
+}
+
+/* Photo personnelle : réduite dans le navigateur, puis stockée telle quelle dans la colonne « Image ».
+ * Une cellule de tableur accepte 50 000 caractères : on vise 30 000 au plus (environ 22 Ko). */
+const PHOTO_MAX_CARACTERES = 30000;
+
+function chargerImage(fichier) {
+  return new Promise((ok, ko) => {
+    const url = URL.createObjectURL(fichier);
+    const image = new Image();
+    image.onload = () => { URL.revokeObjectURL(url); ok(image); };
+    image.onerror = () => { URL.revokeObjectURL(url); ko(new Error("Ce fichier n'est pas une image lisible.")); };
+    image.src = url;
+  });
+}
+
+/** Réduit une image jusqu'à ce qu'elle tienne dans une cellule. Renvoie une adresse « data:image/… ». */
+async function preparerPhoto(fichier) {
+  if (!fichier || !/^image\//.test(fichier.type)) throw new Error('Choisis un fichier image (photo, capture d\'écran…).');
+  if (fichier.size > 25 * 1024 * 1024) throw new Error('Image trop lourde (25 Mo maximum).');
+  const image = await chargerImage(fichier);
+  const toile = document.createElement('canvas');
+  for (const hauteur of [420, 360, 300, 240, 180]) {
+    const echelle = Math.min(1, hauteur / image.naturalHeight, (hauteur * 0.9) / image.naturalWidth);
+    toile.width = Math.max(1, Math.round(image.naturalWidth * echelle));
+    toile.height = Math.max(1, Math.round(image.naturalHeight * echelle));
+    const dessin = toile.getContext('2d');
+    dessin.fillStyle = '#fff';                       // fond blanc pour les images transparentes
+    dessin.fillRect(0, 0, toile.width, toile.height);
+    dessin.drawImage(image, 0, 0, toile.width, toile.height);
+    for (const qualite of [0.8, 0.65, 0.5]) {
+      let donnee = toile.toDataURL('image/webp', qualite);
+      if (!donnee.startsWith('data:image/webp')) donnee = toile.toDataURL('image/jpeg', qualite);   // Safari ancien
+      if (donnee.length <= PHOTO_MAX_CARACTERES) return donnee;
+    }
+  }
+  throw new Error("Impossible de réduire assez cette image. Essaie avec une autre photo.");
+}
+
+async function recevoirPhoto(fichier) {
+  const erreur = $('i-erreur'), apercu = $('i-apercu');
+  if (!apercu) return;
+  erreur.textContent = '';
+  apercu.innerHTML = '<p class="aide">Préparation de la photo…</p>';
+  try {
+    saisie.photo = await preparerPhoto(fichier);
+  } catch (e) {
+    saisie.photo = null;
+    apercu.innerHTML = '';
+    erreur.textContent = e.message;
+    return;
+  }
+  apercu.innerHTML = `<div class="carte-choisie">
+    <img src="${esc(saisie.photo)}" alt="Aperçu de ta photo">
+    <span><b>Ta photo</b><small>Réduite à ${Math.round(saisie.photo.length / 1366)} Ko pour tenir dans le tableur.</small></span>
+  </div>
+  <button type="button" class="btn btn-accent grand" id="i-enregistrer-photo">Enregistrer cette photo</button>`;
+}
+
+/** Enregistre (ou retire, si carte est null) l'image d'un article. */
+async function enregistrerImage(a, carte, bouton) {
+  const champs = carte ? { idTcgdex: carte.id, image: carte.image } : { idTcgdex: '', image: '' };
+  const reponse = await envoyer('modifier', { ligne: a._ligne, numero: a.numero, articleAttendu: a.article, champs }, bouton,
+    `${carte ? 'Image' : 'Image retirée'} : ${a.article}`);
+  if (!reponse) { if ($('i-erreur')) $('i-erreur').textContent = "L'image n'a pas été enregistrée."; return; }
+  Object.assign(a, champs);
+  toast(carte ? 'Image enregistrée.' : 'Image retirée.');
+  afficherStock(); afficherCarteImages();
+  if (!a._attente) ouvrirFiche(a._ligne); else $('fiche').close();
+}
+
 function brancherCartes() {
+  $('fiche-contenu').addEventListener('input', (e) => { if (e.target.id === 'i-recherche') chercherImage(); });
+  // Photo personnelle : choix d'un fichier, ou glisser-déposer n'importe où dans la fenêtre
+  const articleDeLaFenetre = () => {
+    const bloc = $('fiche-contenu').querySelector('.formulaire[data-ligne]');
+    return bloc ? etat.articles.find((x) => x._ligne === Number(bloc.dataset.ligne)) : null;
+  };
+  $('fiche-contenu').addEventListener('change', (e) => {
+    if (e.target.id === 'i-fichier' && e.target.files[0]) recevoirPhoto(e.target.files[0]);
+  });
+  ['dragenter', 'dragover'].forEach((type) => $('fiche').addEventListener(type, (e) => {
+    if (!$('i-depot')) return;
+    e.preventDefault();
+    $('i-depot').classList.add('survol');
+  }));
+  ['dragleave', 'drop'].forEach((type) => $('fiche').addEventListener(type, (e) => {
+    if (!$('i-depot')) return;
+    e.preventDefault();
+    $('i-depot').classList.remove('survol');
+    if (type === 'drop' && e.dataTransfer && e.dataTransfer.files[0]) recevoirPhoto(e.dataTransfer.files[0]);
+  }));
+  $('fiche-contenu').addEventListener('click', (e) => {
+    if (e.target.id !== 'i-enregistrer-photo' || !saisie.photo) return;
+    const a = articleDeLaFenetre();
+    if (a) enregistrerImage(a, { id: '', image: saisie.photo }, e.target);
+  });
+  $('fiche-contenu').addEventListener('click', (e) => {
+    const choix = e.target.closest('[data-image-choix]');
+    if (!choix) return;
+    const a = etat.articles.find((x) => x._ligne === Number(choix.closest('[data-ligne]').dataset.ligne));
+    const carte = (saisie.choixImages || [])[Number(choix.dataset.imageChoix)];
+    if (a && carte) enregistrerImage(a, carte, choix);
+  });
   $('contenu-ajout').addEventListener('input', (e) => {
     if (e.target.id === 'a-nom' || e.target.id === 'a-categorie') suggererCartes();
   });

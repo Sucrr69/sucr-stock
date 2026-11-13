@@ -614,3 +614,17 @@ dialog::backdrop { background: rgba(14, 8, 40, .45); -webkit-backdrop-filter: bl
 .progression span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
 .a-valider { padding: 12px 0; border-top: 1px solid color-mix(in srgb, var(--texte) 10%, transparent); }
 dialog h3 { font-size: .95rem; margin: 14px 0 4px; }
+
+.diagnostic { font-size: .78rem; overflow-wrap: anywhere; user-select: all; }
+
+/* ---------- Photo personnelle : zone de dépôt ---------- */
+.depot {
+  display: grid; justify-items: center; gap: 8px; padding: 22px 16px; margin: 6px 0 14px; text-align: center;
+  border: 2px dashed color-mix(in srgb, var(--texte) 22%, transparent); border-radius: 18px;
+  background: color-mix(in srgb, var(--carte) 30%, transparent); transition: border-color .15s, background-color .15s;
+}
+.depot.survol { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.depot span, .depot small { color: var(--doux); font-size: .85rem; }
+.depot .btn { display: inline-flex; align-items: center; margin: 0; color: var(--texte); cursor: pointer; }
+.carte-choisie img { height: auto; max-height: 92px; }
+.vignette, .fiche-image { background-color: #fff; }

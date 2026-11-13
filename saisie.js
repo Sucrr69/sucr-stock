@@ -591,6 +591,7 @@ function boutonsFiche(a) {
     ${enVente ? '<button type="button" class="btn btn-accent" data-fiche="vendre">Marquer vendu</button>' : ''}
     ${enVente ? `<button type="button" class="btn" data-fiche="lister">${a.statut === 'Listé' ? 'Changer la mise en vente' : 'Marquer listé'}</button>` : ''}
     <button type="button" class="btn" data-fiche="modifier">Modifier</button>
+    ${boutonImage(a)}
     ${versionApi() >= 5 ? '<button type="button" class="btn btn-danger" data-fiche="supprimer">Supprimer</button>' : ''}
   </div>`;
 }
@@ -648,6 +649,8 @@ async function actionFiche(action, a, bouton) {
     afficherAjout();
     return;
   }
+  if (action === 'image') return ficheImage(a);
+  if (action === 'retirer-image') return enregistrerImage(a, null, bouton);
   if (action === 'supprimer') return ficheSupprimer(a);
   if (action === 'annuler-suppression') return ouvrirFiche(a._ligne);
   if (action === 'valider-supprimer') return supprimerArticle(a, bouton);

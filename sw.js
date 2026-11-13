@@ -2,7 +2,7 @@
  * Stratégie « réseau d'abord » : avec du réseau, on charge toujours la dernière version ;
  * sans réseau, on ressort la dernière version gardée sur l'appareil.
  * Les échanges avec Google (données) ne passent jamais par ce cache. */
-const CACHE = 'sucr-stock-202611122133';
+const CACHE = 'sucr-stock-202611122329';
 const CACHE_IMAGES = 'sucr-tcg-images-v1';   // images des cartes : gardées d'une version de l'appli à l'autre
 const MAX_IMAGES = 2500;
 const FICHIERS = ['./', 'index.html', 'style.css', 'calculs.js', 'tableau.js', 'saisie.js', 'horsligne.js', 'verifier.js', 'cartes.js', 'app.js',

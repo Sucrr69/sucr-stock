@@ -45,6 +45,8 @@ const CHAMPS_EUROS = ['prixAchat', 'prixVenteBrut', 'commission', 'prixVenteNet'
 const COULEURS_ETAT = { MT: '#5bc8dc', NM: '#3caf56', EX: '#a8b820', GD: '#f0c419', LP: '#f39c35', PL: '#f0778c', PO: '#e04848' };
 const COULEURS_CATEGORIE = { 'Pokémon': '#ffe082', 'One Piece': '#ffab91', 'Scellé': '#b39ddb', "Ultra's": '#80cbc4', 'Collection': '#90caf9', 'Équipement': '#cfd8dc', 'Autre': '#e0e0e0' };
 
+// Remplacé par la date de publication quand le dossier « publication » est généré.
+const VERSION_APPLI = '202611122329';
 const CLE_REGLAGES = 'sucr-stock.reglages';
 const CLE_DONNEES = 'sucr-stock.donnees';
 const PAR_PAGE = 150;
@@ -134,7 +136,7 @@ async function synchroniser() {
       throw erreur;
     }
     const donnees = await api('lire');
-    ecrireLocal(CLE_DONNEES, donnees);
+    etat.cacheRefuse = !ecrireLocal(CLE_DONNEES, donnees);
     chargerDonnees(donnees);
     afficherSynchro('ok', 'Synchronisé');
   } catch (e) {
@@ -291,7 +293,7 @@ function ouvrirFiche(ligne) {
   }).join('');
   $('fiche-contenu').innerHTML =
     `<h2>${esc(a.article)}</h2><p class="aide">${a._ligne > 0 ? `Ligne ${a._ligne} de l'onglet Stock` : 'Pas encore dans le tableur'}</p>
-     ${imageValide(a.image) ? `<img class="fiche-image" src="${esc(a.image)}/high.webp" alt="" crossorigin="anonymous">` : ''}
+     ${imageValide(a.image) ? `<img class="fiche-image" ${attributsImage(a.image, true)} alt="">` : ''}
      ${boutonsFiche(a)}<table>${lignes}</table>`;
   $('fiche').showModal();
 }
@@ -320,7 +322,7 @@ function afficherMapping() {
       <td>${esc(col.titre)}</td>
       <td class="type-${esc(col.type)}">${esc(libelles[col.type] || col.type)}</td>
       <td>${champ ? esc(champ) : '<span class="manquant">non reconnue</span>'}</td>
-      <td>${esc(ex === '' || ex == null ? '—' : ex)}</td>
+      <td>${esc(ex === '' || ex == null ? '—' : String(ex).length > 60 ? String(ex).slice(0, 60) + '…' : ex)}</td>
     </tr>`;
   }).join('');
 
@@ -377,7 +379,24 @@ function messageReglages(type, texte) {
   el.className = 'message ' + type;
   el.textContent = texte;
 }
+/** Ligne de diagnostic dans Réglages : permet de voir d'un coup d'œil pourquoi une fonction est masquée. */
+function afficherDiagnostic() {
+  const zone = $('r-diagnostic');
+  if (!zone) return;
+  const d = etat.donnees;
+  const ouiNon = (v) => (v ? 'oui' : 'non');
+  zone.textContent = 'Appli : ' + VERSION_APPLI + (d
+    ? ' · Script : ' + (d.version || 'ancien') + ' · Fichier : ' + d.fichier + ' · Écriture : ' + ouiNon(d.ecriture === true) +
+      ' · Colonnes images : ' + ouiNon(etat.index.idTcgdex >= 0 && etat.index.image >= 0) + ' · Colonne Note : ' + ouiNon(etat.index.note >= 0)
+    : ' · pas encore connecté au tableur');
+}
+
 function afficherCache() {
+  afficherDiagnostic();
+  if (etat.cacheRefuse && etat.donnees) {
+    $('r-cache').textContent = "Attention : tes données sont trop volumineuses pour être gardées sur cet appareil (trop de photos personnelles, sans doute). L'appli fonctionne, mais pas hors ligne.";
+    return;
+  }
   $('r-cache').textContent = etat.donnees
     ? `Dernière lecture du Sheet : ${fmtDate.format(new Date(etat.donnees.luLe))} (${fmtNombre.format(etat.articles.length)} articles gardés sur cet appareil).`
     : "Aucune donnée gardée sur cet appareil.";
