@@ -83,6 +83,10 @@ function appliquerFile(articles) {
   };
   for (const { action, donnees: d } of enAttente()) {
     if (action === 'modifier') modifier(d, d.champs);
+    if (action === 'enregistrerPhoto') {
+      const a = articles.find((x) => x.numero === d.numero);
+      if (a) { a.image = 'photo:0'; a.idTcgdex = ''; majBrut(a); }   // la photo elle-même est déjà gardée sur l'appareil
+    }
     if (action === 'ajouter') d.articles.forEach((x) => articles.push(provisoire(x, ++rang)));
     if (action === 'echanger') {
       let total = 0;

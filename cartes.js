@@ -91,19 +91,26 @@ function iconeCategorie(categorie) {
   return ICONES_CATEGORIE.carte;
 }
 const estPhotoPerso = (url) => typeof url === 'string' && url.startsWith('data:image/');
+/** L'article a-t-il une image : TCGdex, photo dans l'onglet Photos, ou photo ancienne manière (dans la cellule) ? */
 function imageValide(url) {
-  return typeof url === 'string' && (url.startsWith(HOTE_IMAGES) || estPhotoPerso(url));
+  return typeof url === 'string' && (url.startsWith(HOTE_IMAGES) || estPhotoPerso(url) || estRepereePhoto(url));
 }
-/** Attributs src (+ crossorigin pour TCGdex) d'une image d'article. Une photo personnelle est déjà dans la donnée. */
-function attributsImage(url, grande) {
+/** Attributs src (+ crossorigin pour TCGdex) de l'image d'un article, ou null si elle n'est pas affichable
+ *  tout de suite (photo personnelle pas encore téléchargée sur cet appareil). */
+function attributsImage(a, grande) {
+  const url = a.image;
+  if (estRepereePhoto(url)) {
+    const photo = photoDe(a);
+    return photo ? `src="${esc(photo)}"` : null;
+  }
   if (estPhotoPerso(url)) return `src="${esc(url)}"`;
-  return `src="${esc(url)}/${grande ? 'high' : 'low'}.webp" crossorigin="anonymous"`;
+  if (typeof url === 'string' && url.startsWith(HOTE_IMAGES)) return `src="${esc(url)}/${grande ? 'high' : 'low'}.webp" crossorigin="anonymous"`;
+  return null;
 }
 /** Image de la carte si elle est connue, sinon une icône propre à la catégorie. */
 function vignette(a) {
-  if (imageValide(a.image)) {
-    return `<img class="vignette" ${attributsImage(a.image, false)} alt="" loading="lazy" decoding="async" width="44" height="61">`;
-  }
+  const attributs = attributsImage(a, false);
+  if (attributs) return `<img class="vignette" ${attributs} alt="" loading="lazy" decoding="async" width="44" height="61">`;
   return `<span class="vignette sans-image" style="--c:${esc(couleur(a.categorie, COULEURS_CATEGORIE) || 'var(--bord)')}">
     <svg viewBox="0 0 24 24" aria-hidden="true">${iconeCategorie(a.categorie)}</svg></span>`;
 }
@@ -337,11 +344,11 @@ function ficheImage(a) {
         <input type="search" id="i-recherche" autocomplete="off" value="${esc((nom + ' ' + numero).trim())}"></label>
       <p class="aide" id="i-etat"></p>
       <div class="suggestions" id="i-resultats"></div>` : ''}
-      ${versionApi() >= 7 ? `<div class="depot" id="i-depot">
+      ${versionApi() >= 8 ? `<div class="depot" id="i-depot">
         <b>${sourcePour(a.categorie) ? 'Ou utilise ta propre photo' : 'Utilise ta propre photo'}</b>
         <span>Glisse une image ici, ou</span>
         <label class="btn">Choisir un fichier<input type="file" id="i-fichier" accept="image/*" hidden></label>
-        <small>La photo est réduite puis enregistrée dans ton tableur. Elle n'est envoyée nulle part ailleurs.</small>
+        <small>La photo est réduite puis rangée dans l'onglet « Photos » de ton tableur. Elle n'est envoyée nulle part ailleurs.</small>
       </div>
       <div id="i-apercu"></div>` : '<p class="aide">Pour utiliser ta propre photo, mets à jour le script du tableur (voir GUIDE-PHOTOS.md).</p>'}
       <p class="message erreur" id="i-erreur"></p>
@@ -443,6 +450,21 @@ async function recevoirPhoto(fichier) {
   <button type="button" class="btn btn-accent grand" id="i-enregistrer-photo">Enregistrer cette photo</button>`;
 }
 
+/** Envoie une photo personnelle : elle va dans l'onglet « Photos », le Stock ne reçoit qu'un repère. */
+async function enregistrerPhotoPerso(a, photo, bouton) {
+  const reponse = await envoyer('enregistrerPhoto', { numero: a.numero, articleAttendu: a.article, photo }, bouton, `Photo : ${a.article}`);
+  if (!reponse) { if ($('i-erreur')) $('i-erreur').textContent = "La photo n'a pas été enregistrée."; return; }
+  // Visible tout de suite, y compris si l'envoi est en attente (hors ligne) : la photo est gardée sur l'appareil.
+  const modifie = reponse.modifie || Date.now();
+  await garderPhoto(a.numero, photo, modifie);
+  a.idTcgdex = '';
+  a.image = reponse.image || 'photo:' + modifie;
+  saisie.photo = null;
+  toast(reponse.enAttente ? '' : 'Photo enregistrée.');
+  afficherStock(); afficherCarteImages(); afficherDiagnostic();
+  ouvrirFiche(a._ligne);
+}
+
 /** Enregistre (ou retire, si carte est null) l'image d'un article. */
 async function enregistrerImage(a, carte, bouton) {
   const champs = carte ? { idTcgdex: carte.id, image: carte.image } : { idTcgdex: '', image: '' };
@@ -479,7 +501,7 @@ function brancherCartes() {
   $('fiche-contenu').addEventListener('click', (e) => {
     if (e.target.id !== 'i-enregistrer-photo' || !saisie.photo) return;
     const a = articleDeLaFenetre();
-    if (a) enregistrerImage(a, { id: '', image: saisie.photo }, e.target);
+    if (a) enregistrerPhotoPerso(a, saisie.photo, e.target);
   });
   $('fiche-contenu').addEventListener('click', (e) => {
     const choix = e.target.closest('[data-image-choix]');

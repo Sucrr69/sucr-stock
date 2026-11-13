@@ -46,7 +46,7 @@ const COULEURS_ETAT = { MT: '#5bc8dc', NM: '#3caf56', EX: '#a8b820', GD: '#f0c41
 const COULEURS_CATEGORIE = { 'Pokémon': '#ffe082', 'One Piece': '#ffab91', 'Scellé': '#b39ddb', "Ultra's": '#80cbc4', 'Collection': '#90caf9', 'Équipement': '#cfd8dc', 'Autre': '#e0e0e0' };
 
 // Remplacé par la date de publication quand le dossier « publication » est généré.
-const VERSION_APPLI = '202611122329';
+const VERSION_APPLI = '202611131410';
 const CLE_REGLAGES = 'sucr-stock.reglages';
 const CLE_DONNEES = 'sucr-stock.donnees';
 const PAR_PAGE = 150;
@@ -139,6 +139,7 @@ async function synchroniser() {
     etat.cacheRefuse = !ecrireLocal(CLE_DONNEES, donnees);
     chargerDonnees(donnees);
     afficherSynchro('ok', 'Synchronisé');
+    synchroniserPhotos();   // en arrière-plan : seulement les photos nouvelles
   } catch (e) {
     afficherSynchro('erreur', etat.donnees ? 'Hors ligne' : 'Non connecté');
     throw e;
@@ -293,7 +294,7 @@ function ouvrirFiche(ligne) {
   }).join('');
   $('fiche-contenu').innerHTML =
     `<h2>${esc(a.article)}</h2><p class="aide">${a._ligne > 0 ? `Ligne ${a._ligne} de l'onglet Stock` : 'Pas encore dans le tableur'}</p>
-     ${imageValide(a.image) ? `<img class="fiche-image" ${attributsImage(a.image, true)} alt="">` : ''}
+     ${attributsImage(a, true) ? `<img class="fiche-image" ${attributsImage(a, true)} alt="">` : ''}
      ${boutonsFiche(a)}<table>${lignes}</table>`;
   $('fiche').showModal();
 }
@@ -387,7 +388,8 @@ function afficherDiagnostic() {
   const ouiNon = (v) => (v ? 'oui' : 'non');
   zone.textContent = 'Appli : ' + VERSION_APPLI + (d
     ? ' · Script : ' + (d.version || 'ancien') + ' · Fichier : ' + d.fichier + ' · Écriture : ' + ouiNon(d.ecriture === true) +
-      ' · Colonnes images : ' + ouiNon(etat.index.idTcgdex >= 0 && etat.index.image >= 0) + ' · Colonne Note : ' + ouiNon(etat.index.note >= 0)
+      ' · Colonnes images : ' + ouiNon(etat.index.idTcgdex >= 0 && etat.index.image >= 0) + ' · Colonne Note : ' + ouiNon(etat.index.note >= 0) +
+      ' · Photos sur cet appareil : ' + photosLocales.size + (photosManquantes().length ? ' (' + photosManquantes().length + ' à télécharger)' : '')
     : ' · pas encore connecté au tableur');
 }
 
@@ -541,7 +543,7 @@ function demarrer() {
     }
     if (!confirm("Effacer l'URL, le jeton et la copie locale de cet appareil ? Ton Google Sheet n'est pas touché.")) return;
     try { localStorage.removeItem(CLE_REGLAGES); localStorage.removeItem(CLE_DONNEES); } catch (e) { /* rien */ }
-    location.reload();
+    oublierPhotos().then(() => location.reload());
   });
 
   const r = reglages();
@@ -553,6 +555,8 @@ function demarrer() {
     try { chargerDonnees(cache); } catch (e) { etat.donnees = null; }
   }
   if (!etat.donnees) { afficherStock(); afficherTableau(); afficherMapping(); afficherCache(); afficherAjout(); afficherVerifier(); afficherCarteImages(); }
+
+  chargerPhotosLocales().then(() => { if (photosLocales.size && etat.donnees) { afficherStock(); afficherDiagnostic(); } });
 
   const connecte = r.url && r.jeton;
   montrer(connecte ? (location.hash.slice(1) || 'ajout') : 'reglages');
